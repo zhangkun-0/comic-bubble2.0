@@ -119,6 +119,7 @@
               <div id="panel-image-layer"></div>
             </div>
             <svg id="bubble-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+            <div id="free-text-layer"></div>
           </div>
           <div id="selection-overlay" class="hidden"></div>
           <div id="panel-overlay" class="hidden"></div>
@@ -153,11 +154,13 @@
           >字体加粗</button>
         </div>
         <div class="section">
-          <label for="text-content">文字输入</label>
+          <label for="text-content">框内输入</label>
           <textarea id="text-content" rows="6" spellcheck="false"></textarea>
         </div>
-        <div class="section button-row">
-          <button id="undo" class="secondary" type="button">撤销</button>
+        <div class="section">
+          <label for="outer-text-content">框外输入</label>
+          <textarea id="outer-text-content" rows="4" spellcheck="false"></textarea>
+          <button id="outer-text-style" class="secondary" type="button" disabled>白字黑边</button>
         </div>
         <div class="section">
           <label for="export-format">导出选项</label>

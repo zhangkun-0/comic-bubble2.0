@@ -5,6 +5,7 @@ const elements = {
   hiddenImageInput: document.getElementById('hidden-image-input'),
   bubbleType: document.getElementById('bubble-type'),
   strokeWidth: document.getElementById('stroke-width'),
+  editor: document.getElementById('editor'),
   bubbleFillColor: document.getElementById('bubble-fill-color'),
   insertBubble: document.getElementById('insert-bubble'),
   removeBubble: document.getElementById('remove-bubble'),
@@ -23,7 +24,8 @@ const elements = {
   fontSize: document.getElementById('font-size'),
   toggleBold: document.getElementById('toggle-bold'),
   textContent: document.getElementById('text-content'),
-  undo: document.getElementById('undo'),
+  outerTextContent: document.getElementById('outer-text-content'),
+  outerTextStyle: document.getElementById('outer-text-style'),
   exportFormat: document.getElementById('export-format'),
   exportButton: document.getElementById('export'),
   measureBox: document.getElementById('measure-box'),
@@ -38,6 +40,7 @@ const elements = {
   panelFrameColor: document.getElementById('panel-frame-color'),
   panelImageRotation: document.getElementById('panel-image-rotation'),
   hiddenPanelImageInput: document.getElementById('hidden-panel-image-input'),
+  freeTextLayer: document.getElementById('free-text-layer'),
 };
 
 if (elements.bubbleFillColor) {
@@ -53,14 +56,19 @@ const BUBBLE_FILL_DEFAULT = 'white';
 const BUBBLE_FILL_DARK = 'black';
 const BUBBLE_TEXT_DARK = '#11141b';
 const BUBBLE_TEXT_LIGHT = '#ffffff';
+const FREE_TEXT_STROKE_WIDTH = 4;
+const FREE_TEXT_DEFAULT_STYLE = 'dark';
 
 const state = {
   canvas: { width: 1200, height: 1600 },
   image: { src: '', width: 0, height: 0 },
   viewport: { zoom: 1, offsetX: 0, offsetY: 0 },
   bubbles: [],
+  freeTexts: [],
   nextBubbleId: 1,
+  nextFreeTextId: 1,
   selectedBubbleId: null,
+  selectedFreeTextId: null,
   defaultStrokeWidth: 2,
   defaultBubbleFillColor: BUBBLE_FILL_DEFAULT,
   fontFamily: elements.fontFamily.value,
@@ -171,6 +179,7 @@ function pro5_renderCanvasFromState(options = {}) {
   const imgEl = elements.baseImage;
   const baseAvailable = !!(imgEl && imgEl.naturalWidth && imgEl.naturalHeight);
   const hasBase = includeBaseImage && baseAvailable;
+  const frameColor = pf?.frameColor === 'black' ? '#000000' : '#ffffff';
 
   // 画布尺寸：优先用底图原始尺寸；无底图则用 pageFrame 尺寸
   const W = baseAvailable ? imgEl.naturalWidth  : Math.max(1, pf?.width  || 1);
@@ -182,9 +191,9 @@ function pro5_renderCanvasFromState(options = {}) {
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
-  // 先铺白底
+  // 先铺背景色
   ctx.save();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = frameColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
 
@@ -192,6 +201,19 @@ function pro5_renderCanvasFromState(options = {}) {
   if (hasBase) {
     // 假设 scene 中的底图是等比拉伸到页面尺寸，这里按原始像素画满
     ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+  }
+
+  // 1.5) 覆盖 panel 之外的区域为框色
+  if (pf?.active && Array.isArray(pf.panels) && pf.panels.length) {
+    ctx.save();
+    ctx.fillStyle = frameColor;
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    pf.panels.forEach((panel) => {
+      ctx.rect(panel.x, panel.y, panel.width, panel.height);
+    });
+    ctx.fill('evenodd');
+    ctx.restore();
   }
 
   // 2) 逐格绘制面板内的图片（裁剪到 panel 矩形，支持 scale/rotation/offset）
@@ -413,7 +435,8 @@ function attachEvents() {
   elements.fontSize?.addEventListener('change', handleFontSizeChange);
   elements.toggleBold?.addEventListener('click', toggleBold);
   elements.textContent?.addEventListener('input', handleTextInput);
-  elements.undo?.addEventListener('click', undo);
+  elements.outerTextContent?.addEventListener('input', handleOuterTextInput);
+  elements.outerTextStyle?.addEventListener('click', handleOuterTextStyleToggle);
   elements.exportButton?.addEventListener('click', pro5_exportPNG);
 
   elements.viewport?.addEventListener('wheel', handleWheel, { passive: false });
@@ -424,6 +447,8 @@ function attachEvents() {
 
   elements.bubbleLayer?.addEventListener('pointerdown', handleBubblePointerDown);
   elements.bubbleLayer?.addEventListener('dblclick', handleBubbleDoubleClick);
+
+  elements.freeTextLayer?.addEventListener('pointerdown', handleFreeTextPointerDown);
 
   elements.panelLayer?.addEventListener('pointerdown', handlePanelPointerDown);
   elements.panelLayer?.addEventListener('wheel', handlePanelWheel, { passive: false });
@@ -470,6 +495,9 @@ function handleViewportDoubleClick(event) {
     }
   }
   if (target instanceof Element && target.closest('[data-bubble-id]')) {
+    return;
+  }
+  if (target instanceof Element && target.closest('[data-free-text-id]')) {
     return;
   }
   if (state.inlineEditingBubbleId) {
@@ -1294,12 +1322,91 @@ function setSelectedBubble(id) {
     elements.inlineEditor.blur();
   }
   state.selectedBubbleId = id;
+  if (id != null) {
+    state.selectedFreeTextId = null;
+  }
   updateControlsFromSelection();
   render();
 }
 
 function getSelectedBubble() {
   return state.bubbles.find((bubble) => bubble.id === state.selectedBubbleId) || null;
+}
+
+function getSelectedFreeText() {
+  return state.freeTexts.find((item) => item.id === state.selectedFreeTextId) || null;
+}
+
+function normalizeDegrees(angle) {
+  let value = Number(angle) || 0;
+  value %= 360;
+  if (value < 0) {
+    value += 360;
+  }
+  return value;
+}
+
+function updateFreeTextIndicator(freeText) {
+  if (!elements.positionIndicator) return;
+  if (!freeText) {
+    if (!getSelectedBubble()) {
+      elements.positionIndicator.textContent = '';
+    }
+    return;
+  }
+  const rotation = Math.round(normalizeDegrees(freeText.rotation || 0));
+  elements.positionIndicator.textContent = `位置：(${freeText.x.toFixed(0)}, ${freeText.y.toFixed(0)}) 旋转：${rotation}°`;
+}
+
+function setSelectedFreeText(id) {
+  if (state.inlineEditingBubbleId) {
+    elements.inlineEditor.blur();
+  }
+  state.selectedFreeTextId = id;
+  if (id != null) {
+    state.selectedBubbleId = null;
+  }
+  updateControlsFromSelection();
+  render();
+}
+
+function normalizeFreeTextText(value) {
+  return pro5_sanitizeText(value ?? '');
+}
+
+function createFreeTextAtCenter(text) {
+  const pf = state.pageFrame;
+  let x = state.canvas.width / 2;
+  let y = state.canvas.height / 2;
+  if (pf?.active && isFinite(pf.x + pf.y + pf.width + pf.height)) {
+    x = pf.x + pf.width / 2;
+    y = pf.y + pf.height / 2;
+  }
+  const baseSize = clamp(Number(elements.fontSize?.value) || state.fontSize || 32, 10, 200);
+  const freeText = {
+    id: `free-text-${state.nextFreeTextId++}`,
+    text: normalizeFreeTextText(text),
+    x,
+    y,
+    rotation: 0,
+    fontSize: baseSize,
+    fontFamily: state.fontFamily,
+    style: FREE_TEXT_DEFAULT_STYLE,
+    strokeWidth: FREE_TEXT_STROKE_WIDTH,
+  };
+  state.freeTexts.push(freeText);
+  return freeText;
+}
+
+function removeSelectedFreeText() {
+  const freeText = getSelectedFreeText();
+  if (!freeText) return false;
+  state.freeTexts = state.freeTexts.filter((item) => item.id !== freeText.id);
+  state.selectedFreeTextId = null;
+  pushHistory();
+  render();
+  updateControlsFromSelection();
+  return true;
 }
 
 function removeSelectedBubble() {
@@ -1390,11 +1497,17 @@ function handleFontSizeChange() {
   elements.fontSize.value = state.fontSize;
   state.fontSize = size;
   const bubble = getSelectedBubble();
+  const freeText = getSelectedFreeText();
   if (bubble) {
     bubble.fontSize = size;
     autoFitBubbleToText(bubble);
     pushHistory();
     render();
+  } else if (freeText) {
+    freeText.fontSize = size;
+    render();
+    updateFreeTextIndicator(freeText);
+    pushHistory();
   }
 }
 
@@ -1417,6 +1530,35 @@ function handleTextInput() {
   autoFitBubbleToText(bubble);
   render();
   scheduleHistoryCommit();
+}
+
+function handleOuterTextInput() {
+  if (!elements.outerTextContent) return;
+  const value = elements.outerTextContent.value;
+  let freeText = getSelectedFreeText();
+  if (!freeText) {
+    if (!value.trim()) {
+      return;
+    }
+    freeText = createFreeTextAtCenter(value);
+    setSelectedFreeText(freeText.id);
+    updateFreeTextIndicator(freeText);
+    scheduleHistoryCommit();
+    return;
+  }
+  freeText.text = normalizeFreeTextText(value);
+  render();
+  updateFreeTextIndicator(freeText);
+  scheduleHistoryCommit();
+}
+
+function handleOuterTextStyleToggle() {
+  const freeText = getSelectedFreeText();
+  if (!freeText) return;
+  freeText.style = freeText.style === 'light' ? 'dark' : 'light';
+  render();
+  updateControlsFromSelection();
+  pushHistory();
 }
 
 let historyCommitTimer = null;
@@ -1448,8 +1590,16 @@ function handleViewportPointerDown(event) {
   if (target.closest('[data-bubble-id]')) {
     return;
   }
+  if (target.closest('[data-free-text-id]')) {
+    return;
+  }
   if (state.selectedBubbleId) {
     setSelectedBubble(null);
+  }
+  if (state.selectedFreeTextId) {
+    state.selectedFreeTextId = null;
+    updateControlsFromSelection();
+    render();
   }
   if (state.inlineEditingBubbleId) {
     elements.inlineEditor.blur();
@@ -1473,6 +1623,9 @@ function handleBubblePointerDown(event) {
   const bubbleId = bubbleElement.dataset.bubbleId;
   const bubble = state.bubbles.find((item) => item.id === bubbleId);
   if (!bubble) return;
+  if (state.selectedFreeTextId) {
+    state.selectedFreeTextId = null;
+  }
   setSelectedBubble(bubble.id);
   state.interaction = {
     type: 'move-bubble',
@@ -1495,6 +1648,55 @@ function handleBubbleDoubleClick(event) {
   if (!bubble) return;
   setSelectedBubble(bubble.id);
   openInlineEditor(bubble);
+}
+
+function handleFreeTextPointerDown(event) {
+  if (event.button !== 0) return;
+  const target = event.target;
+  const handle = target.closest('[data-free-text-role="rotate"]');
+  const container = target.closest('[data-free-text-id]');
+  if (!container) return;
+  event.preventDefault();
+  event.stopPropagation();
+  window.getSelection()?.removeAllRanges();
+  const id = container.dataset.freeTextId;
+  const freeText = state.freeTexts.find((item) => item.id === id);
+  if (!freeText) return;
+  if (state.selectedFreeTextId !== freeText.id) {
+    setSelectedFreeText(freeText.id);
+  }
+  if (handle) {
+    startFreeTextRotation(event, freeText);
+  } else {
+    startFreeTextDrag(event, freeText);
+  }
+}
+
+function startFreeTextDrag(event, freeText) {
+  state.interaction = {
+    type: 'move-free-text',
+    pointerId: event.pointerId,
+    freeTextId: freeText.id,
+    startX: event.clientX,
+    startY: event.clientY,
+    origin: { x: freeText.x, y: freeText.y },
+  };
+  elements.viewport?.setPointerCapture(event.pointerId);
+}
+
+function startFreeTextRotation(event, freeText) {
+  const center = { x: freeText.x, y: freeText.y };
+  const worldPoint = clientToWorldPoint(event);
+  const startAngle = Math.atan2(worldPoint.y - center.y, worldPoint.x - center.x) || 0;
+  state.interaction = {
+    type: 'rotate-free-text',
+    pointerId: event.pointerId,
+    freeTextId: freeText.id,
+    center,
+    startAngle,
+    initialRotation: normalizeDegrees(freeText.rotation || 0),
+  };
+  elements.viewport?.setPointerCapture(event.pointerId);
 }
 
 function startResize(event, direction) {
@@ -1584,6 +1786,32 @@ function handlePointerMove(event) {
       bubble.tail.aim = absToNorm(bubble, worldPoint);
     }
     render();
+  } else if (state.interaction.type === 'move-free-text') {
+    const freeText = state.freeTexts.find((item) => item.id === state.interaction.freeTextId);
+    if (!freeText) return;
+    const delta = screenDeltaToWorld(
+      event.clientX - state.interaction.startX,
+      event.clientY - state.interaction.startY,
+    );
+    freeText.x = state.interaction.origin.x + delta.x;
+    freeText.y = state.interaction.origin.y + delta.y;
+    render();
+    updateFreeTextIndicator(freeText);
+  } else if (state.interaction.type === 'rotate-free-text') {
+    const freeText = state.freeTexts.find((item) => item.id === state.interaction.freeTextId);
+    if (!freeText) return;
+    const worldPoint = clientToWorldPoint(event);
+    const dx = worldPoint.x - state.interaction.center.x;
+    const dy = worldPoint.y - state.interaction.center.y;
+    if (!dx && !dy) return;
+    const currentAngle = Math.atan2(dy, dx);
+    if (!Number.isFinite(currentAngle)) return;
+    const delta = currentAngle - state.interaction.startAngle;
+    freeText.rotation = normalizeDegrees(
+      state.interaction.initialRotation + (delta * 180) / Math.PI,
+    );
+    render();
+    updateFreeTextIndicator(freeText);
   }
 }
 
@@ -1598,15 +1826,21 @@ function handlePointerUp(event) {
     }
     return;
   }
+  const interactionType = state.interaction.type;
   if (
-    state.interaction.type === 'move-bubble' ||
-    state.interaction.type === 'resize' ||
-    state.interaction.type === 'tail' ||
-    state.interaction.type === 'pro5-handle'
+    interactionType === 'move-bubble' ||
+    interactionType === 'resize' ||
+    interactionType === 'tail' ||
+    interactionType === 'pro5-handle' ||
+    interactionType === 'move-free-text' ||
+    interactionType === 'rotate-free-text'
   ) {
     pushHistory();
+    if (interactionType === 'move-free-text' || interactionType === 'rotate-free-text') {
+      updateControlsFromSelection();
+    }
   }
-  if (state.interaction.type === 'pan') {
+  if (interactionType === 'pan') {
     updateSceneTransform();
   }
   try {
@@ -1732,28 +1966,53 @@ function autoFitBubbleToText(bubble, options = {}) {
 
 function updateControlsFromSelection() {
   const bubble = getSelectedBubble();
-  const hasSelection = Boolean(bubble);
-  elements.removeBubble.disabled = !hasSelection;
+  const freeText = getSelectedFreeText();
+  const hasBubbleSelection = Boolean(bubble);
+  elements.removeBubble.disabled = !hasBubbleSelection;
   updateBubblePanelPlacementButton();
   if (!bubble) {
     elements.textContent.value = '';
-    elements.positionIndicator.textContent = '';
     if (elements.bubbleFillColor) {
       elements.bubbleFillColor.value = state.defaultBubbleFillColor;
       elements.bubbleFillColor.disabled = true;
     }
-    return;
+  } else {
+    if (elements.bubbleFillColor) {
+      elements.bubbleFillColor.disabled = false;
+      elements.bubbleFillColor.value = ensureBubbleFillColor(bubble);
+    }
+    elements.strokeWidth.value = bubble.strokeWidth;
+    elements.fontFamily.value = bubble.fontFamily;
+    elements.fontSize.value = bubble.fontSize;
+    elements.toggleBold.dataset.active = bubble.bold ? 'true' : 'false';
+    elements.textContent.value = bubble.text;
+    elements.positionIndicator.textContent = `位置：(${bubble.x.toFixed(0)}, ${bubble.y.toFixed(0)}) 尺寸：${bubble.width.toFixed(0)}×${bubble.height.toFixed(0)}`;
   }
-  if (elements.bubbleFillColor) {
-    elements.bubbleFillColor.disabled = false;
-    elements.bubbleFillColor.value = ensureBubbleFillColor(bubble);
+
+  if (freeText) {
+    if (elements.outerTextContent) {
+      elements.outerTextContent.value = freeText.text;
+    }
+    if (elements.outerTextStyle) {
+      elements.outerTextStyle.disabled = false;
+      elements.outerTextStyle.dataset.active = freeText.style === 'light' ? 'true' : 'false';
+    }
+    elements.fontSize.value = freeText.fontSize;
+    state.fontSize = freeText.fontSize;
+    updateFreeTextIndicator(freeText);
+  } else {
+    if (elements.outerTextContent) {
+      elements.outerTextContent.value = '';
+    }
+    if (elements.outerTextStyle) {
+      elements.outerTextStyle.disabled = true;
+      elements.outerTextStyle.dataset.active = 'false';
+    }
+    if (!bubble) {
+      elements.fontSize.value = state.fontSize;
+      elements.positionIndicator.textContent = '';
+    }
   }
-  elements.strokeWidth.value = bubble.strokeWidth;
-  elements.fontFamily.value = bubble.fontFamily;
-  elements.fontSize.value = bubble.fontSize;
-  elements.toggleBold.dataset.active = bubble.bold ? 'true' : 'false';
-  elements.textContent.value = bubble.text;
-  elements.positionIndicator.textContent = `位置：(${bubble.x.toFixed(0)}, ${bubble.y.toFixed(0)}) 尺寸：${bubble.width.toFixed(0)}×${bubble.height.toFixed(0)}`;
 }
 
 function applyInlineEditorStyling(bubble) {
@@ -1958,6 +2217,7 @@ function render() {
   cleanupBubblePanelAttachments();
   renderPanels();
   renderBubbles();
+  renderFreeTexts();
   updateSelectionOverlay();
   updatePanelOverlay();
   updateBubblePanelPlacementButton();
@@ -2195,8 +2455,22 @@ function restorePageFrame(snapshot) {
 function renderPanels() {
     // 守护式检查
   if (!elements || !elements.panelLayer || !elements.panelSvg || !elements.panelImageLayer) return;
-  
+
   const pf = state.pageFrame;
+  const frameColor = pf.frameColor === 'black' ? 'black' : 'white';
+  if (elements.scene) {
+    if (pf.active) {
+      elements.scene.dataset.frameColor = frameColor;
+    } else {
+      delete elements.scene.dataset.frameColor;
+    }
+  }
+  if (elements.editor) {
+    delete elements.editor.dataset.frameColor;
+  }
+  if (elements.viewport) {
+    delete elements.viewport.dataset.frameColor;
+  }
   if (!pf.active || !state.image.width || !state.image.height) {
     elements.panelLayer?.setAttribute('data-active', 'false');
     if (elements.panelSvg) {
@@ -2210,7 +2484,7 @@ function renderPanels() {
 
   elements.panelLayer?.setAttribute('data-active', 'true');
   const maskId = 'panel-mask';
-  const gutterColor = pf.frameColor === 'black' ? '#000000' : '#ffffff';
+  const gutterColor = frameColor === 'black' ? '#000000' : '#ffffff';
   const defs = [
     `<mask id="${maskId}">`,
     `<rect x="${pf.x}" y="${pf.y}" width="${pf.width}" height="${pf.height}" fill="white" />`,
@@ -2955,6 +3229,54 @@ function renderBubbles() {
   if (typeof pro5_drawRectSeams === 'function') pro5_drawRectSeams();
 }
 
+function renderFreeTexts() {
+  const layer = elements.freeTextLayer;
+  if (!layer) return;
+  layer.innerHTML = '';
+  const selectedId = state.selectedFreeTextId;
+  state.freeTexts.forEach((freeText) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'free-text-item';
+    wrapper.dataset.freeTextId = freeText.id;
+    wrapper.style.left = `${freeText.x}px`;
+    wrapper.style.top = `${freeText.y}px`;
+    if (freeText.id === selectedId) {
+      wrapper.classList.add('is-selected');
+    }
+
+    const rotatable = document.createElement('div');
+    rotatable.className = 'free-text-rotatable';
+    rotatable.dataset.freeTextId = freeText.id;
+    rotatable.style.transform = `rotate(${normalizeDegrees(freeText.rotation || 0)}deg)`;
+    if (freeText.style === 'light') {
+      rotatable.classList.add('free-text-style-light');
+    }
+
+    const handle = document.createElement('div');
+    handle.className = 'free-text-rotate-handle';
+    handle.dataset.freeTextId = freeText.id;
+    handle.dataset.freeTextRole = 'rotate';
+
+    const frame = document.createElement('div');
+    frame.className = 'free-text-frame';
+    frame.dataset.freeTextId = freeText.id;
+
+    const content = document.createElement('div');
+    content.className = 'free-text-content';
+    content.dataset.freeTextId = freeText.id;
+    content.style.fontFamily = freeText.fontFamily;
+    content.style.fontSize = `${freeText.fontSize}px`;
+    content.style.lineHeight = Math.round(freeText.fontSize * 1.2) + 'px';
+    content.textContent = freeText.text || '';
+
+    frame.appendChild(content);
+    rotatable.appendChild(handle);
+    rotatable.appendChild(frame);
+    wrapper.appendChild(rotatable);
+    layer.appendChild(wrapper);
+  });
+}
+
 // === pro5_: 将 bubble 近似为圆（cx, cy, r）。组合框/思想气泡准确为圆；Figma 椭圆取平均半径近似 ===
 function pro5_circleFromBubble(b) {
   if (!b) return null;
@@ -3599,6 +3921,7 @@ function handleKeyDown(event) {
   const isTextInput =
     target === elements.inlineEditor ||
     target === elements.textContent ||
+    target === elements.outerTextContent ||
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement;
   const isModifierActive = event.ctrlKey || event.metaKey;
@@ -3622,6 +3945,10 @@ function handleKeyDown(event) {
       event.preventDefault();
       return;
     }
+    if (removeSelectedFreeText()) {
+      event.preventDefault();
+      return;
+    }
     removeSelectedBubble();
   }
   if (isModifierActive && event.key.toLowerCase() === 'z') {
@@ -3633,7 +3960,9 @@ function handleKeyDown(event) {
 function pushHistory() {
   const snapshot = JSON.stringify({
     bubbles: state.bubbles,
+    freeTexts: state.freeTexts,
     selectedBubbleId: state.selectedBubbleId,
+    selectedFreeTextId: state.selectedFreeTextId,
     viewport: state.viewport,
     pageFrame: clonePageFrame(state.pageFrame),
   });
@@ -3651,7 +3980,11 @@ function undo() {
     copy.fillColor = normalizeBubbleFillColor(copy.fillColor);
     return copy;
   });
+  state.freeTexts = Array.isArray(snapshot.freeTexts)
+    ? snapshot.freeTexts.map((text) => ({ ...text }))
+    : [];
   state.selectedBubbleId = snapshot.selectedBubbleId;
+  state.selectedFreeTextId = snapshot.selectedFreeTextId ?? null;
   state.viewport = { ...snapshot.viewport };
   restorePageFrame(snapshot.pageFrame);
   updateSceneTransform();
@@ -3676,16 +4009,30 @@ function clamp(value, min, max) {
 
 async function exportRaster(format, options = {}) {
   const { includeBaseImage = false } = options;
+  const pf = state.pageFrame;
+  const frameColor = pf?.frameColor === 'black' ? '#000000' : '#ffffff';
   const canvas = document.createElement('canvas');
   canvas.width = state.canvas.width;
   canvas.height = state.canvas.height;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = frameColor;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   if (includeBaseImage && state.image.src) {
     await drawImageToCanvas(ctx, state.image.src, canvas.width, canvas.height);
   }
+  if (pf?.active && Array.isArray(pf.panels) && pf.panels.length) {
+    ctx.save();
+    ctx.fillStyle = frameColor;
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    pf.panels.forEach((panel) => {
+      ctx.rect(panel.x, panel.y, panel.width, panel.height);
+    });
+    ctx.fill('evenodd');
+    ctx.restore();
+  }
   drawBubblesToContext(ctx, { includeText: true });
+  drawFreeTextsToCanvas(ctx);
   const mime = format === 'png' ? 'image/png' : 'image/jpeg';
   const quality = format === 'jpg' ? 0.95 : 1;
   return new Promise((resolve) => {
@@ -3796,6 +4143,45 @@ function drawBubblesToContext(ctx, options = {}) {
       }
       ctx.restore();
     }
+    ctx.restore();
+  });
+}
+
+function drawFreeTextsToCanvas(ctx) {
+  const list = Array.isArray(state.freeTexts) ? state.freeTexts : [];
+  if (!list.length) return;
+
+  list.forEach((freeText) => {
+    const text = normalizeFreeTextText(freeText.text);
+    if (!text) return;
+    const lines = text.split('\n');
+    if (!lines.length) return;
+
+    const rotation = normalizeDegrees(freeText.rotation || 0);
+    const fontSize = Math.max(10, freeText.fontSize || state.fontSize || 32);
+    const fontFamily = freeText.fontFamily || state.fontFamily;
+    const strokeColor = freeText.style === 'light' ? '#000000' : '#ffffff';
+    const fillColor = freeText.style === 'light' ? '#ffffff' : '#000000';
+    const lineHeight = Math.round(fontSize * 1.2);
+    const offsetY = -((lines.length - 1) * lineHeight) / 2;
+
+    ctx.save();
+    ctx.translate(freeText.x, freeText.y);
+    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.font = `700 ${fontSize}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineWidth = freeText.strokeWidth || FREE_TEXT_STROKE_WIDTH;
+
+    lines.forEach((line, index) => {
+      const y = offsetY + index * lineHeight;
+      ctx.strokeStyle = strokeColor;
+      ctx.fillStyle = fillColor;
+      ctx.strokeText(line, 0, y);
+      ctx.fillText(line, 0, y);
+    });
     ctx.restore();
   });
 }
@@ -4323,6 +4709,9 @@ async function pro5_renderCanvasFromStateAsync(options = {}) {
   // 4) 叠加对白文字（Canvas 绘制）
   try { await pro5_drawBubbleTextsOnCanvas(ctx); }
   catch (e) { console.warn('pro5_: 文本绘制失败，已跳过。', e); }
+
+  try { drawFreeTextsToCanvas(ctx); }
+  catch (e) { console.warn('free text 绘制失败，已跳过。', e); }
 
   return canvas;
 }

@@ -177,6 +177,14 @@ button[data-active='true'] {
   flex-direction: column;
 }
 
+#editor[data-frame-color='white'] {
+  background: #f5f5f5;
+}
+
+#editor[data-frame-color='black'] {
+  background: #000000;
+}
+
 #viewport {
   position: relative;
   flex: 1;

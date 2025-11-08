@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>漫画气泡</title>
+    <link rel="stylesheet" href="styles/main.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="controls" id="left-panel">
+        <h1>漫画气泡</h1>
+        <div class="section">
+          <button id="import-image" class="primary" type="button">导入图片</button>
+          <input
+            id="hidden-image-input"
+            class="visually-hidden-input"
+            type="file"
+            accept="image/*"
+          />
+         </div>
+         <div class="section">
+          <label for="bubble-type">对话框选择</label>
+          <select id="bubble-type">
+           <option value="speech-pro-5deg">对白气泡</option>
+           <option value="thought-circle">思想气泡</option>
+           <option value="combo-circle">组合气泡</option>
+           <option value="rectangle">矩形气泡</option>
+           <option value="shout-burst">喊叫气泡</option>
+          </select>
+        </div>
+        <div class="section">
+          <label for="stroke-width">对话框粗细</label>
+          <input id="stroke-width" type="number" min="1" max="20" value="4" />
+        </div>
+      
+        <div class="section button-row">
+          <button id="insert-bubble" class="primary" type="button">插入对话框</button>
+          <button id="remove-bubble" class="danger" type="button" disabled>删除对话框</button>
+        </div>
+        <div class="section">
+          <button
+            id="place-bubble-into-panel"
+            class="secondary"
+            type="button"
+            disabled
+          >放入漫画格</button>
+        </div>
+        
+        <div class="section" id="panel-controls">
+          <h2>漫画分格</h2>
+          
+            <label for="panel-image-rotation">格框内图片旋转</label>
+          <input
+            id="panel-image-rotation"
+            type="range"
+            min="-180"
+            max="180"
+            value="0"
+          />
+          <p class="hint">在漫画页框内ctrl+鼠标左键拖拽可切分格框，鼠标左键拖动画格，右键拖动格内图。</p>
+        </div>
+        <input
+          id="hidden-panel-image-input"
+          class="visually-hidden-input"
+          type="file"
+          accept="image/*"
+        />
+          <label for="panel-margin-horizontal">漫画页框左右间距</label>
+          <input
+            id="panel-margin-horizontal"
+            type="number"
+            min="0"
+            value="60"
+          />
+          <label for="panel-margin-vertical">漫画页框上下间距</label>
+          <input
+            id="panel-margin-vertical"
+            type="number"
+            min="0"
+            value="60"
+          />
+          <label for="panel-line-width">漫画格框线条</label>
+          <input
+            id="panel-line-width"
+            type="number"
+            min="1"
+            value="4"
+          />
+          <label for="panel-gap-horizontal">横向间隙</label>
+          <input
+            id="panel-gap-horizontal"
+            type="number"
+            min="0"
+            value="16"
+          />
+          <label for="panel-gap-vertical">纵向间隙</label>
+          <input
+            id="panel-gap-vertical"
+            type="number"
+            min="0"
+            value="24"
+          />
+          <label for="panel-frame-color">格框外部颜色</label>
+          <select id="panel-frame-color">
+            <option value="white" selected>白色</option>
+            <option value="black">黑色</option>
+          </select>
+        
+      </aside>
+
+      <main id="editor">
+        <div id="viewport">
+          <div id="placeholder" class="no-image-placeholder">请先导入漫画图片</div>
+          <div id="scene">
+            <img id="base-image" alt="" />
+            <div id="panel-layer">
+              <svg id="panel-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+              <div id="panel-image-layer"></div>
+            </div>
+            <svg id="bubble-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+          <div id="selection-overlay" class="hidden"></div>
+          <div id="panel-overlay" class="hidden"></div>
+          <textarea id="inline-editor" class="hidden" spellcheck="false"></textarea>
+        </div>
+        <div id="status-bar">
+          <span id="zoom-indicator">缩放：100%</span>
+          <span id="position-indicator"></span>
+        </div>
+      </main>
+
+      <aside class="controls" id="right-panel">
+        <h2>文字样式</h2>
+        <div class="section">
+          <label for="font-family">文字选择</label>
+          <select id="font-family">
+            <option value="'Microsoft YaHei', '微软雅黑', sans-serif">微软雅黑</option>
+            <option value="'SimHei', '黑体', sans-serif">黑体</option>
+            <option value="'NSimSun', '新宋体', serif">新宋体</option>
+          </select>
+        </div>
+        <div class="section">
+          <label for="font-size">字号</label>
+          <input id="font-size" type="number" min="10" max="120" value="32" />
+        </div>
+        <div class="section">
+          <button
+            id="toggle-bold"
+            class="secondary"
+            type="button"
+            data-active="false"
+          >字体加粗</button>
+        </div>
+        <div class="section">
+          <label for="text-content">文字输入</label>
+          <textarea id="text-content" rows="6" spellcheck="false"></textarea>
+        </div>
+        <div class="section button-row">
+          <button id="undo" class="secondary" type="button">撤销</button>
+        </div>
+        <div class="section">
+          <label for="export-format">导出选项</label>
+          <select id="export-format">
+            <option value="png">PNG</option>
+            <option value="jpg">JPG</option>
+            <option value="psd">PSD</option>
+          </select>
+        </div>
+        <div class="section">
+          <button id="export" class="primary" type="button">导出图片</button>
+        </div>
+      </aside>
+    </div>
+
+    <div id="measure-box"></div>
+    <script src="src/main.js"></script>
+  </body>
+</html>

@@ -2480,7 +2480,10 @@ function renderPanels() {
 
   const pf = state.pageFrame;
   const frameColor = pf.frameColor === 'black' ? 'black' : 'white';
-  updatePageFrameMarginOverlay();
+  // 若存在边距叠加层更新函数，则调用之（守护式）
+  if (typeof updatePageFrameMarginOverlay === 'function') {
+    updatePageFrameMarginOverlay();
+  }
   if (elements.scene) {
     if (pf.active) {
       elements.scene.dataset.frameColor = frameColor;
@@ -2489,22 +2492,23 @@ function renderPanels() {
     }
   }
   if (elements.editor) {
-    delete elements.editor.dataset.frameColor;
+    if (pf.active) {
+      elements.editor.dataset.frameColor = frameColor;
+    } else {
+      delete elements.editor.dataset.frameColor;
+    }
   }
   if (elements.viewport) {
+     // 固定页面外背景，viewport 不再跟随 frameColor
     delete elements.viewport.dataset.frameColor;
   }
+  // 未激活或无底图：清空并返回
   if (!pf.active || !state.image.width || !state.image.height) {
     elements.panelLayer?.setAttribute('data-active', 'false');
-    if (elements.panelSvg) {
-      elements.panelSvg.innerHTML = '';
-    }
-    if (elements.panelImageLayer) {
-      elements.panelImageLayer.innerHTML = '';
-    }
+    if (elements.panelSvg) elements.panelSvg.innerHTML = '';
+    if (elements.panelImageLayer) elements.panelImageLayer.innerHTML = '';
     return;
   }
-
   elements.panelLayer?.setAttribute('data-active', 'true');
   const maskId = 'panel-mask';
   const gutterColor = frameColor === 'black' ? '#000000' : '#ffffff';

@@ -2,7 +2,7 @@
   font-family: 'Microsoft YaHei', '微软雅黑', system-ui, -apple-system,
     BlinkMacSystemFont, 'Segoe UI', sans-serif;
   color: #1f2229;
-  background: #2d3139;
+  background: #34495e;
 }
 
 * {
@@ -13,7 +13,7 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: #1b1d23;
+  background: #34495e;
   color: inherit;
 }
 
@@ -29,7 +29,7 @@ body {
   grid-template-columns: 280px 1fr 280px;
   width: 100vw;
   height: 100vh;
-  background: #20242c;
+  background: #34495e;
   color: #e9edf4;
 }
 
@@ -172,7 +172,7 @@ button[data-active='true'] {
 
 #editor {
   position: relative;
-  background: radial-gradient(circle at top, rgba(94, 168, 255, 0.08), transparent 60%);
+  background: #34495e;
   display: flex;
   flex-direction: column;
 }
@@ -189,7 +189,7 @@ button[data-active='true'] {
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: #0f1118;
+  background: #34495e;
 }
 
 #viewport[data-frame-color='white'] {

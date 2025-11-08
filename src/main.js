@@ -2473,21 +2473,8 @@ function renderPanels() {
     }
   }
   if (elements.viewport) {
-    if (pf.active) {
-      elements.viewport.dataset.frameColor = frameColor;
-    } else {
-      delete elements.viewport.dataset.frameColor;
-    }
-  }
-  if (!pf.active || !state.image.width || !state.image.height) {
-    elements.panelLayer?.setAttribute('data-active', 'false');
-    if (elements.panelSvg) {
-      elements.panelSvg.innerHTML = '';
-    }
-    if (elements.panelImageLayer) {
-      elements.panelImageLayer.innerHTML = '';
-    }
-    return;
+     // 固定页面外背景，viewport 不再跟随 frameColor
+    delete elements.viewport.dataset.frameColor;
   }
 
   elements.panelLayer?.setAttribute('data-active', 'true');

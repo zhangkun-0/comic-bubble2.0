@@ -177,11 +177,27 @@ button[data-active='true'] {
   flex-direction: column;
 }
 
+#editor[data-frame-color='white'] {
+  background: #f5f5f5;
+}
+
+#editor[data-frame-color='black'] {
+  background: #000000;
+}
+
 #viewport {
   position: relative;
   flex: 1;
   overflow: hidden;
   background: #34495e;
+}
+
+#viewport[data-frame-color='white'] {
+  background: #ffffff;
+}
+
+#viewport[data-frame-color='black'] {
+  background: #000000;
 }
 
 #scene {

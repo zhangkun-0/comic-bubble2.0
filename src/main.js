@@ -32,6 +32,7 @@ const elements = {
   panelLayer: document.getElementById('panel-layer'),
   panelSvg: document.getElementById('panel-svg'),
   panelImageLayer: document.getElementById('panel-image-layer'),
+  pageFrameMargins: document.getElementById('page-frame-margins'),
   panelMarginHorizontal: document.getElementById('panel-margin-horizontal'),
   panelMarginVertical: document.getElementById('panel-margin-vertical'),
   panelLineWidth: document.getElementById('panel-line-width'),
@@ -2452,12 +2453,37 @@ function restorePageFrame(snapshot) {
   }));
 }
 
+function updatePageFrameMarginOverlay() {
+  const overlay = elements.pageFrameMargins;
+  if (!overlay) return;
+  const pf = state.pageFrame;
+  if (!pf.active || !state.image.width || !state.image.height) {
+    overlay.style.display = 'none';
+    overlay.style.boxShadow = 'none';
+    overlay.style.width = '0px';
+    overlay.style.height = '0px';
+    return;
+  }
+
+  overlay.style.display = 'block';
+  overlay.style.left = `${pf.x}px`;
+  overlay.style.top = `${pf.y}px`;
+  overlay.style.width = `${pf.width}px`;
+  overlay.style.height = `${pf.height}px`;
+  const marginColor = pf.frameColor === 'black' ? '#000000' : '#ffffff';
+  overlay.style.boxShadow = `0 0 0 9999px ${marginColor}`;
+}
+
 function renderPanels() {
     // 守护式检查
   if (!elements || !elements.panelLayer || !elements.panelSvg || !elements.panelImageLayer) return;
 
   const pf = state.pageFrame;
   const frameColor = pf.frameColor === 'black' ? 'black' : 'white';
+  // 若存在边距叠加层更新函数，则调用之（守护式）
+  if (typeof updatePageFrameMarginOverlay === 'function') {
+    updatePageFrameMarginOverlay();
+  }
   if (elements.scene) {
     if (pf.active) {
       elements.scene.dataset.frameColor = frameColor;
@@ -2476,7 +2502,13 @@ function renderPanels() {
      // 固定页面外背景，viewport 不再跟随 frameColor
     delete elements.viewport.dataset.frameColor;
   }
-
+  // 未激活或无底图：清空并返回
+  if (!pf.active || !state.image.width || !state.image.height) {
+    elements.panelLayer?.setAttribute('data-active', 'false');
+    if (elements.panelSvg) elements.panelSvg.innerHTML = '';
+    if (elements.panelImageLayer) elements.panelImageLayer.innerHTML = '';
+    return;
+  }
   elements.panelLayer?.setAttribute('data-active', 'true');
   const maskId = 'panel-mask';
   const gutterColor = frameColor === 'black' ? '#000000' : '#ffffff';

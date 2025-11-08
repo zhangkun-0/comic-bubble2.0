@@ -207,8 +207,19 @@ button[data-active='true'] {
 
 #scene[data-frame-color='black'] {
   background: #000000;
-}
 
+#page-frame-margins {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  box-shadow: none;
+  display: none;
+  z-index: 1;
+}
+  
 #base-image {
   display: block;
   max-width: none;
